@@ -21,7 +21,6 @@
         <!-- Dependency versions -->
         <picocli.version>4.7.6</picocli.version>
         <javaparser.version>3.26.4</javaparser.version>
-        <snakeyaml-engine.version>2.9</snakeyaml-engine.version>
         <jackson.version>2.17.2</jackson.version>
         <junit5.version>5.11.0</junit5.version>
         <jqwik.version>1.9.1</jqwik.version>
@@ -44,9 +43,9 @@
 
         <!-- YAML parsing -->
         <dependency>
-            <groupId>org.snakeyaml</groupId>
-            <artifactId>snakeyaml-engine</artifactId>
-            <version>${snakeyaml-engine.version}</version>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+            <version>2.2</version>
         </dependency>
 
         <!-- JSON serialization -->
