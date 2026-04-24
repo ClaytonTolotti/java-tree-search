@@ -1,0 +1,36 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Lambda Function template with CloudFormation intrinsic functions
+
+Parameters:
+  FunctionName:
+    Type: String
+    Description: Name of the Lambda function
+  ExecutionRoleArn:
+    Type: String
+    Description: ARN of the execution role
+
+Resources:
+  MyFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref FunctionName
+      Runtime: java17
+      Handler: com.example.Handler::handleRequest
+      Role: !Ref ExecutionRoleArn
+      Environment:
+        Variables:
+          FUNCTION_NAME: !Sub "${FunctionName}-env"
+          LOG_GROUP: !Sub "arn:aws:logs:us-east-1:123456789:log-group:/aws/lambda/${FunctionName}"
+
+  FunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt MyFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+
+Outputs:
+  FunctionArn:
+    Value: !GetAtt MyFunction.Arn
+  FunctionName:
+    Value: !Ref FunctionName

@@ -1,6 +1,7 @@
 package com.javatreesearch.parser;
 
 // Feature: ast-code-search, Property 7: Cache do Config_Parser Evita Releitura
+// Feature: cloudformation-yaml-support, Property 5: Idempotência de cache
 
 import com.javatreesearch.model.ConfigEntry;
 import net.jqwik.api.*;
@@ -15,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Property-based tests for ConfigParser cache behavior.
- * Validates: Requirement 2a.2
+ * Validates: Requirement 2a.2, Requirements 13.1, 13.2
  */
 class ConfigParserCachePropertiesTest {
 
@@ -56,6 +57,109 @@ class ConfigParserCachePropertiesTest {
         } finally {
             deleteRecursively(dir);
         }
+    }
+
+    /**
+     * Property 5: Idempotência de cache — YAML com CloudFormation tags
+     *
+     * For any YAML file with CloudFormation tags (!Ref), calling getEntries() N times
+     * with the same file and term must always return the same list (same elements, same order).
+     *
+     * Validates: Requirements 13.1, 13.2
+     */
+    @Property(tries = 100)
+    void cacheIdempotencyWithCloudFormationYaml(
+            @ForAll("resourceNames") String resourceName,
+            @ForAll("searchTerms") String searchTerm
+    ) throws IOException {
+        Path dir = Files.createTempDirectory("cfn-cache-test");
+        try {
+            String yaml = buildYamlWithRef(resourceName);
+            Path yamlFile = dir.resolve("template.yaml");
+            Files.writeString(yamlFile, yaml);
+
+            ConfigParserImpl parser = new ConfigParserImpl();
+
+            List<ConfigEntry> first = parser.getEntries(yamlFile, searchTerm);
+            List<ConfigEntry> second = parser.getEntries(yamlFile, searchTerm);
+            List<ConfigEntry> third = parser.getEntries(yamlFile, searchTerm);
+
+            assertEquals(first, second,
+                    "Second call must return same entries as first for term '" + searchTerm + "'");
+            assertEquals(first, third,
+                    "Third call must return same entries as first for term '" + searchTerm + "'");
+        } finally {
+            deleteRecursively(dir);
+        }
+    }
+
+    /**
+     * Property 5b: Cache is shared across different search terms on the same file.
+     *
+     * Calling getEntries() with different terms on the same file must use the cached
+     * parsed entries — the union of results for term1 and term2 must be consistent
+     * with a single parse of the file.
+     *
+     * Validates: Requirements 13.2, 13.3
+     */
+    @Property(tries = 100)
+    void cacheIsSharedAcrossDifferentTerms(
+            @ForAll("resourceNames") String resourceName
+    ) throws IOException {
+        Path dir = Files.createTempDirectory("cfn-cache-terms-test");
+        try {
+            String yaml = buildYamlWithRef(resourceName);
+            Path yamlFile = dir.resolve("template.yaml");
+            Files.writeString(yamlFile, yaml);
+
+            ConfigParserImpl parser = new ConfigParserImpl();
+
+            // Call with the resource name (should find the !Ref entry)
+            List<ConfigEntry> byResource = parser.getEntries(yamlFile, resourceName);
+            // Call with empty term (should return all entries)
+            List<ConfigEntry> allEntries = parser.getEntries(yamlFile, "");
+            // Call with resource name again (must be identical to first call — from cache)
+            List<ConfigEntry> byResourceAgain = parser.getEntries(yamlFile, resourceName);
+
+            assertEquals(byResource, byResourceAgain,
+                    "Repeated call with same term must return identical list (cache hit)");
+            assertTrue(allEntries.size() >= byResource.size(),
+                    "All-entries result must contain at least as many entries as filtered result");
+        } finally {
+            deleteRecursively(dir);
+        }
+    }
+
+    /**
+     * Generates random non-empty alphanumeric resource names, as used in CloudFormation logical IDs.
+     */
+    @Provide
+    Arbitrary<String> resourceNames() {
+        return Arbitraries.strings()
+                .alpha()
+                .ofMinLength(1)
+                .ofMaxLength(20);
+    }
+
+    /**
+     * Generates search terms: either the resource name prefix, empty string, or a random alpha string.
+     */
+    @Provide
+    Arbitrary<String> searchTerms() {
+        return Arbitraries.strings()
+                .alpha()
+                .ofMinLength(0)
+                .ofMaxLength(10);
+    }
+
+    /**
+     * Builds a minimal CloudFormation-style YAML with a !Ref tag for the given resource name.
+     */
+    private String buildYamlWithRef(String resourceName) {
+        return "Resources:\n" +
+               "  MyResource:\n" +
+               "    Properties:\n" +
+               "      RefValue: !Ref " + resourceName + "\n";
     }
 
     /**

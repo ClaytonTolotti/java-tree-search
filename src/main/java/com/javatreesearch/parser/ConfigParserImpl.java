@@ -1,8 +1,6 @@
 package com.javatreesearch.parser;
 
 import com.javatreesearch.model.ConfigEntry;
-import org.snakeyaml.engine.v2.api.Load;
-import org.snakeyaml.engine.v2.api.LoadSettings;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -106,13 +104,16 @@ public class ConfigParserImpl implements ConfigParser {
     @SuppressWarnings("unchecked")
     private List<ConfigEntry> parseYaml(Path file) throws IOException {
         String content = Files.readString(file);
-        LoadSettings settings = LoadSettings.builder().build();
-        Load load = new Load(settings);
+        CloudFormationYamlParser yamlParser = new CloudFormationYamlParserImpl();
         List<ConfigEntry> entries = new ArrayList<>();
-        for (Object parsed : load.loadAllFromString(content)) {
-            if (parsed instanceof Map) {
-                flattenYaml("", (Map<Object, Object>) parsed, content, file, entries);
+        try {
+            for (Object parsed : yamlParser.parseAll(content, file)) {
+                if (parsed instanceof Map) {
+                    flattenYaml("", (Map<Object, Object>) parsed, content, file, entries);
+                }
             }
+        } catch (CloudFormationYamlParseException e) {
+            throw new ConfigIoException(file, e);
         }
         return entries;
     }
@@ -127,9 +128,22 @@ public class ConfigParserImpl implements ConfigParser {
             Object val = entry.getValue();
             if (val instanceof Map) {
                 flattenYaml(key, (Map<Object, Object>) val, content, file, entries);
+            } else if (val instanceof List) {
+                List<?> list = (List<?>) val;
+                for (int i = 0; i < list.size(); i++) {
+                    Object item = list.get(i);
+                    if (item instanceof Map) {
+                        flattenYaml(key + "[" + i + "]", (Map<Object, Object>) item, content, file, entries);
+                    } else {
+                        String value = item == null ? "" : String.valueOf(item);
+                        int lineNum = findLineNumber(content, String.valueOf(entry.getKey()));
+                        entries.add(new ConfigEntry(key + "[" + i + "]", value, file, Math.max(1, lineNum)));
+                    }
+                }
             } else {
                 String value = val == null ? "" : String.valueOf(val);
                 // Approximate line number by searching for the key in the content
+                // CfnTagValue objects fall through here; String.valueOf(val) calls toString() → "TagName:value"
                 int lineNum = findLineNumber(content, String.valueOf(entry.getKey()));
                 entries.add(new ConfigEntry(key, value, file, Math.max(1, lineNum)));
             }

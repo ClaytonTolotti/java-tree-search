@@ -1,0 +1,36 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: IAM Role template with CloudFormation intrinsic functions
+
+Parameters:
+  RoleName:
+    Type: String
+    Description: Name of the IAM role
+
+Resources:
+  MyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+
+  RolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "${RoleName}-policy"
+      Roles:
+        - !Ref MyRole
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: logs:CreateLogGroup
+            Resource: !Sub "arn:aws:logs:*:*:*"
+
+Outputs:
+  RoleArn:
+    Value: !GetAtt MyRole.Arn
